@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -16,20 +17,21 @@ class WeatherScreen extends StatefulWidget {
 
 class _WeatherScreenState extends State<WeatherScreen> {
   late Future<Map<String, dynamic>> weather;
+  final TextEditingController _cityController = TextEditingController();
+  String currentCity = 'London';
 
   Future<Map<String, dynamic>> getCurrentWeather() async {
     try {
-      String cityName = 'London';
       final res = await http.get(
         Uri.parse(
-          'https://api.openweathermap.org/data/2.5/forecast?q=$cityName&APPID=$openWeatherAPIKey',
+          'https://api.openweathermap.org/data/2.5/forecast?q=$currentCity&APPID=$openWeatherAPIKey',
         ),
       );
 
       final data = jsonDecode(res.body);
 
       if (data['cod'] != '200') {
-        throw 'An unexpected error occurred';
+        throw 'City not found or an unexpected error occurred';
       }
 
       return data;
@@ -38,10 +40,65 @@ class _WeatherScreenState extends State<WeatherScreen> {
     }
   }
 
+  void _searchCity() {
+    if (_cityController.text.trim().isNotEmpty) {
+      setState(() {
+        currentCity = _cityController.text.trim();
+        weather = getCurrentWeather();
+      });
+      _cityController.clear();
+      // Hide keyboard
+      FocusScope.of(context).unfocus();
+    }
+  }
+
+  void _showSearchDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Search City'),
+          content: TextField(
+            controller: _cityController,
+            decoration: const InputDecoration(
+              hintText: 'Enter city name',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) {
+              Navigator.of(context).pop();
+              _searchCity();
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _searchCity();
+              },
+              child: const Text('Search'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     weather = getCurrentWeather();
+  }
+
+  @override
+  void dispose() {
+    _cityController.dispose();
+    super.dispose();
   }
 
   @override
@@ -56,6 +113,10 @@ class _WeatherScreenState extends State<WeatherScreen> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            onPressed: _showSearchDialog,
+            icon: const Icon(Icons.search),
+          ),
           IconButton(
             onPressed: () {
               setState(() {
@@ -77,7 +138,27 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
           if (snapshot.hasError) {
             return Center(
-              child: Text(snapshot.error.toString()),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error: ${snapshot.error.toString()}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _showSearchDialog,
+                    child: const Text('Try Another City'),
+                  ),
+                ],
+              ),
             );
           }
 
@@ -91,12 +172,37 @@ class _WeatherScreenState extends State<WeatherScreen> {
           final currentWindSpeed = currentWeatherData['wind']['speed'];
           final currentHumidity = currentWeatherData['main']['humidity'];
 
+          final cityName = data['city']['name'];
+          final countryCode = data['city']['country'];
+
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // main card
+                Center(
+                  child: Column(
+                    children: [
+                      Text(
+                        '$cityName, $countryCode',
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Last updated: ${DateFormat('MMM dd, yyyy • hh:mm a').format(DateTime.now())}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
                 SizedBox(
                   width: double.infinity,
                   child: Card(
@@ -116,7 +222,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
                           child: Column(
                             children: [
                               Text(
-                                '$currentTemp K',
+                                '${(currentTemp - 273.15).round()}°C',
                                 style: const TextStyle(
                                   fontSize: 32,
                                   fontWeight: FontWeight.bold,
@@ -162,7 +268,9 @@ class _WeatherScreenState extends State<WeatherScreen> {
                       final hourlySky =
                           data['list'][index + 1]['weather'][0]['main'];
                       final hourlyTemp =
-                          hourlyForecast['main']['temp'].toString();
+                          (hourlyForecast['main']['temp'] - 273.15)
+                              .round()
+                              .toString();
                       final time = DateTime.parse(hourlyForecast['dt_txt']);
                       return HourlyForecastItem(
                         time: DateFormat.j().format(time),
@@ -190,17 +298,17 @@ class _WeatherScreenState extends State<WeatherScreen> {
                     AdditionalInfoItem(
                       icon: Icons.water_drop,
                       label: 'Humidity',
-                      value: currentHumidity.toString(),
+                      value: '$currentHumidity%',
                     ),
                     AdditionalInfoItem(
                       icon: Icons.air,
                       label: 'Wind Speed',
-                      value: currentWindSpeed.toString(),
+                      value: '${currentWindSpeed} m/s',
                     ),
                     AdditionalInfoItem(
                       icon: Icons.beach_access,
                       label: 'Pressure',
-                      value: currentPressure.toString(),
+                      value: '$currentPressure hPa',
                     ),
                   ],
                 ),
